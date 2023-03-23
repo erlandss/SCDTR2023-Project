@@ -1,0 +1,17 @@
+Proposer:
+1. Send a prepare(n) message to a majority of acceptors, where n is a proposal number.
+2. If receive promise messages from a majority of acceptors:
+   a. Choose a value v to propose.
+   b. Send accept(n, v) message to a majority of acceptors.
+   c. If receive a majority of accept messages, broadcast decision(n, v).
+
+Acceptor:
+1. If receive prepare(n) message with proposal number n:
+   a. If n > last_proposal_number, reply with promise(n, last_accepted_number, last_accepted_value).
+   b. Otherwise, reply with a negative response.
+2. If receive accept(n, v) message with proposal number n:
+   a. If n >= last_proposal_number, accept the proposal and reply with an accept message.
+   b. Otherwise, reply with a negative response.
+
+Learner:
+1. If receive a decision(n, v) message from a proposer, accept the decision and notify other learners.
