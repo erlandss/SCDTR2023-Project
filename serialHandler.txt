@@ -1,0 +1,132 @@
+void handleSerial(){
+  if(Serial.available()){
+    char cmd1 = Serial.read();
+    switch(cmd1){
+      case 'g' : {
+        //All getter commands. If only g return node_address at current pico
+        if(Serial.available()){
+          char cmd2 = Serial.read();
+          uint8_t i;
+          switch(cmd2){
+            case 'd': {
+              i = Serial.read();
+              //Get current duty cycle at luminaire i
+              break;
+            }
+            case 'r': {
+              i = Serial.read();
+              //Get current illuminance reference at luminaire i
+              break;
+            }
+            case 'l': {
+              i = Serial.read();
+              //Get measured illuminance at luminaire i
+              break;
+            }
+            case 'o': {
+              i = Serial.read();
+              //Get current occupancy state at desk <i>
+              break;
+            }
+            case 'a': {
+              i = Serial.read();
+              //Get anti-windup state at desk <i>
+              break;
+            }
+            case 'k': {
+              i = Serial.read();
+              //Get feedback state at desk <i>
+              break;
+            }
+            case 'x': {
+              i = Serial.read();
+              //Get current external illuminance at desk <i>
+              break;
+            }
+            case 'p': {
+              i = Serial.read();
+              //Get instantaneous power consumption at desk <i>
+              break;
+            }
+            case 't': {
+              i = Serial.read();
+              //Get elapsed time since last restart
+              break;
+            }
+            case 'b': {
+              char x = Serial.read();
+              i = Serial.read();
+              //Get last minute buffer of variable <x> of desk <i>. <x> can be “l” or “d”.
+              if(i == 0){
+                write_buffers(x);
+              }
+            }
+            case 'e': {
+              i = Serial.read();
+              //Get average energy consumption at desk <i> since the last system restart.
+              Serial.print("e: "); Serial.print(i); Serial.print(" ");
+              Serial.println(performance_metrics.E);
+              break;
+            }
+            case 'v': {
+              i = Serial.read();
+              //Get average visibility error at desk <i> since last system restart.
+              Serial.print("v "); Serial.print(i); Serial.print(" ");
+              Serial.println(performance_metrics.V);
+              break;
+            }
+            case 'f': {
+              i = Serial.read();
+              //Get the average flicker error on desk <i> since the last system restart.
+              Serial.print("f "); Serial.print(i); Serial.print(" ");
+              Serial.println(performance_metrics.F);
+              break;
+            }
+          }
+        }
+        else{
+          Serial.println(node_address);          
+        }
+        break;
+      }
+      case 'd' : {
+        //Set directly the duty cycle of the LED at luminaire i
+        uint8_t i = Serial.read();
+        int val = Serial.read();
+        break;
+      }
+      case 'r' : {
+        //Set the illuminance reference at luminaire i
+        uint8_t i = Serial.read();
+        float val = Serial.read();
+        break;
+      }
+      case 'o' : {
+        //Set current occupancy state at desk <i>
+        uint8_t i = Serial.read();
+        bool val = Serial.read();
+        break;
+      }
+      case 'a' : {
+        //Set anti-windup state at desk <i>
+        uint8_t i = Serial.read();
+        bool val = Serial.read();
+        break;
+      }
+      case 's' : {
+        //Start stream of real-time variable <x> of desk <i>. <x> can be “l” or “d”.
+        uint8_t i = Serial.read();
+        char val = Serial.read();
+        break;
+      }
+      case 'S' : {
+        //Stop stream of real-time variable <x> of desk <i>. <x> can be “l” or “d”
+        uint8_t i = Serial.read();
+        char val = Serial.read();
+        break;
+      }           
+      default:
+        break;     
+    }
+  }
+}
