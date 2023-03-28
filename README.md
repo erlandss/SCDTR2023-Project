@@ -10,7 +10,7 @@ all controller nodes to make them synchronously turn on and off the luminaires. 
 code then should be used to calibrate the self- and cross-coupling gains between the
 several nodes in the distributed system. This procedure should be done every time the
 system wakes up to prevent errors in calibration due to movement of the elements inside
-the box.
+the box. DONE
 
 Implement the Hub function to serve the listed commands. Write and test a
 microcontroller program that routes messages between the PC and other controller
