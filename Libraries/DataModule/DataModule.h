@@ -9,7 +9,7 @@ class DataModule
 private:
     //Private member variables:
     uint8_t nodes[3];
-    Filter filter{0.70}; 
+    Filter coupling_gains_filter{0.60}; 
 public:
     //Public member variables for easy access:
     float coupling_gains[3] = {0};

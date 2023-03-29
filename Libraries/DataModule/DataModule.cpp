@@ -22,6 +22,6 @@ void DataModule::update_gains(uint8_t node, int adc_val)
     float v = adc_val*(3.3/4095);
     float ldr = 10000*(3.3-v)/v; //ldr = R*(Vcc-v)/v
     float lux = pow(10,-(log10(ldr)-6.1)/0.8);
-    lux = filter.filter_data(lux);
+    lux = coupling_gains_filter.filter_data(lux);
     coupling_gains[this->at_node(node)] = lux; 
 }
