@@ -1,5 +1,7 @@
 # SCDTR2023-Project
 
+![plot](./modules.png)
+
 Milestones (mark when done):
 
 Develop network “wake-up” procedures so that all nodes are aware of each-other and
