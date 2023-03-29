@@ -203,6 +203,7 @@ void loop() {
         control.init_local_pid(0.02, 1.2, 8, 0.07, 1); //h, K, b, Ti, Tt
         add_repeating_timer_ms( -10, local_control_timer_callback, NULL, &local_control_timer);
         first_time_idle = false;
+
       }
       
       while(1){
@@ -226,6 +227,9 @@ bool local_control_timer_callback( struct repeating_timer *t ){
   int read_adc = analogRead(LDR_PIN);
   int u = control.compute_local_control(read_adc);
   analogWrite(LED_PIN, u);
+  data.update_lux_buffer(control.last_lux_read);
+  data.update_pwm_buffer(u);
+  data.update_metrics(millis(), u/4095, control.lux_ref, control.last_lux_read);
   return true;
 }
 
