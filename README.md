@@ -1,6 +1,6 @@
 # SCDTR2023-Project
 
-![plot](./modules.png)
+![plot](./modules.jpeg)
 
 Milestones (mark when done):
 
