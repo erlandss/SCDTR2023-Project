@@ -70,7 +70,7 @@ int can_frame_to_bytes(can_frame * frame, uint8_t * bytes, uint8_t & id){
 
 can_frame float_to_can_frame(float f, uint8_t id){
     uint8_t bytes[5];
-    bytes[0] = CAN_WRITE_FLOAT;
+    bytes[0] = 0;
     memcpy(&bytes[1], &f, 4);
     return bytes_to_can_frame(bytes, 5, id);
 }

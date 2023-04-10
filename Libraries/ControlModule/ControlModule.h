@@ -13,6 +13,7 @@ private:
 public:
     //Public member variables for easy access:
     float lux_ref;
+    float last_lux_read;
     //Public member functions:
     ControlModule(){}
     ~ControlModule(){}
