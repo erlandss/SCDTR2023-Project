@@ -5,6 +5,8 @@
 #include "DataModule.h"
 #include "ControlModule.h"
 #include "CanHelperModule.h"
+#include "SerialHandler.h"
+#include "Queue.h"
 
 const int DAC_RANGE = 4096;
 
@@ -15,6 +17,7 @@ const int LDR_PIN = A0;
 //Modules:
 DataModule data;
 ControlModule control;
+SerialHandler serial;
 
 //Timers for interrupts:
 struct repeating_timer local_control_timer;
@@ -124,6 +127,7 @@ void loop() {
     case NODE_CALIBRATING : {
       //Give calibration turn based on unique id
       data.init(&nodes[0]);
+      serial.init(&nodes[0]);
       int turn = 2;
       if(nodes[0] < nodes[1] || nodes[0] < nodes[2]){
         turn--;
@@ -188,18 +192,19 @@ void loop() {
         control.init_local_pid(0.02, 1.2, 8, 0.07, 1); //h, K, b, Ti, Tt
         add_repeating_timer_ms( -10, local_control_timer_callback, NULL, &local_control_timer);
         first_time_idle = false;
-
       }
-      
       while(1){
-        handleSerial();
-        delayMicroseconds(10);
+        serial.read_inputs();
+        serial.print_all();
       }
-
     }
 
     case NODE_DISCUSSING : {
-      
+
+      while(1){
+        serial.read_inputs();
+        serial.print_all();
+      }      
     }
 
     default : 
@@ -298,6 +303,7 @@ void loop1() {
     }
 
     case NODE_IDLE : {
+      bool should_break = false;
       while(1){
         can_frame frm;
         if(got_irq) { 
@@ -312,18 +318,37 @@ void loop1() {
           if( can0.checkError()) {
             uint8_t err = can0.getErrorFlags();
             //Do something with this annoying error
+            break;
           }
-          switch(frm.data[0]) {
-            case CAN_WRITE_FLOAT : {
-              float f;
-              memcpy(&f, &frm.data[1], 4);
-              //Do stuff with float
-              break;
+
+          if(frm.data[1] == nodes[0]){
+            switch(frm.data[0]) {
+              case CAN_SET_ILLUMINANCE_REF : {
+                control.lux_ref = frm.data[2];
+                break;
+              }
+              case CAN_GET_ILLUMINANCE_REF : {
+                uint8_t b[3];
+                b[0] = CAN_REPLY_ILLUMINANCE_REF;
+                b[1] = frm.can_id;
+                b[2] = control.lux_ref;
+                can_frame frm = bytes_to_can_frame(b, 3, nodes[0]);
+                can0.sendMessage(&frm);
+                break;
+              }
+              case CAN_REPLY_ILLUMINANCE_REF : {
+                serial.add_print("r ");
+                serial.add_print(data.at_node(frm.can_id)); serial.add_print(' ');
+                serial.add_println(frm.data[2]);
+              }
+              default:
+                break;
             }
-            default:
-              break;
           }
-        }        
+        }
+
+        handle_inputs();
+        if(should_break)break;        
       }
     }
 
@@ -342,16 +367,14 @@ void loop1() {
           if( can0.checkError()) {
             uint8_t err = can0.getErrorFlags();
             //Do something with this annoying error
+            break;
           }
-          switch(frm.data[0]) {
-            case CAN_WRITE_FLOAT : {
-              float f;
-              memcpy(&f, &frm.data[1], 4);
-              //Do stuff with float
-              break;
+
+          if(frm.data[1] == nodes[0]){
+            switch(frm.data[0]) {
+              default:
+                break;
             }
-            default:
-              break;
           }
         }
       }
@@ -362,6 +385,149 @@ void loop1() {
   }
 }
 
+void handle_inputs(){
+  if(serial.has_cmds()){
+    Queue<char> cmd = serial.get_cmd();
+    char c1 = cmd.pop();
+    switch(c1){
+      case 'g' : {
+        //All getter commands
+        char c2 = cmd.pop();
+        uint8_t i = cmd.pop() - '0'; //Should be 0, 1 or 2, where 0 is this node
+        switch(c2){
+            case 'd': {
+                //Get current duty cycle at luminaire i
+                break;
+            }
+            case 'r': {
+                //Get current illuminance reference at luminaire i
+                if(!i){
+                  serial.add_print("r ");
+                  serial.add_print(i); serial.add_print(' ');                 
+                  serial.add_println((int)control.lux_ref);
+                }
+                else{
+                  uint8_t b[2];
+                  b[0] = CAN_GET_ILLUMINANCE_REF;
+                  b[1] = nodes[i];
+                  can_frame frm = bytes_to_can_frame(b, 2, nodes[0]);
+                  can0.sendMessage(&frm);
+                }
+                break;
+            }
+            case 'l': {
+                //Get measured illuminance at luminaire i
+                break;
+            }
+            case 'o': {
+                //Get current occupancy state at desk <i>
+                break;
+            }
+            case 'a': {
+                //Get anti-windup state at desk <i>
+                break;
+            }
+            case 'k': {
+                //Get feedback state at desk <i>
+                break;
+            }
+            case 'x': {
+                //Get current external illuminance at desk <i>
+                break;
+            }
+            case 'p': {
+                //Get instantaneous power consumption at desk <i>
+                break;
+            }
+            case 't': {
+                //Get elapsed time since last restart
+                break;
+            }
+            case 'b': {
+                char x = cmd.pop();
+                //Get last minute buffer of variable <x> of desk <i>. <x> can be “l” or “d”.
+                break;
+            }
+            case 'e': {
+                //Get average energy consumption at desk <i> since the last system restart.
+                break;
+            }
+            case 'v': {
+                //Get average visibility error at desk <i> since last system restart.
+                break;
+            }
+            case 'f': {
+                //Get the average flicker error on desk <i> since the last system restart.
+                break;
+            }
+            default:
+              break;
+        }
+        break;
+      }
+      case 'd' : {
+        //Set directly the duty cycle of the LED at luminaire i
+        uint8_t i = cmd.pop() - '0';
+        int val = 0;
+        do{
+            char c = cmd.pop();
+            val = val*10 + (c - '0');
+        }
+        while(!cmd.is_empty());
+        //Do something with the val
+        break;
+      }
+      case 'r' : {
+        //Set the illuminance reference at luminaire i
+        uint8_t i = cmd.pop() - '0';
+        int val = 0;
+        do{
+            char c = cmd.pop();
+            val = val*10 + (c - '0');
+        }
+        while(!cmd.is_empty());
+        if(!i){
+          control.lux_ref = val;
+        }
+        else{
+          uint8_t b[3];
+          b[0] = CAN_SET_ILLUMINANCE_REF;
+          b[1] = nodes[i];
+          b[2] = val;
+          can_frame frm = bytes_to_can_frame(b, 3, nodes[0]);
+          can0.sendMessage(&frm);
+        }
+        break;
+      }
+      case 'o' : {
+        //Set current occupancy state at desk <i>
+        uint8_t i = cmd.pop() - '0';
+        bool val = cmd.pop() - '0';
+        break;
+      }
+      case 'a' : {
+        //Set anti-windup state at desk <i>
+        uint8_t i = cmd.pop() - '0';
+        bool val = cmd.pop() - '0';
+        break;
+      }
+      case 's' : {
+        //Start stream of real-time variable <x> of desk <i>. <x> can be “l” or “d”.
+        uint8_t i = cmd.pop() - '0';
+        char x = cmd.pop();
+        break;
+      }
+      case 'S' : {
+        //Stop stream of real-time variable <x> of desk <i>. <x> can be “l” or “d”
+        uint8_t i = cmd.pop() - '0';
+        char x = cmd.pop();
+        break;
+      }           
+      default:
+        break;     
+    }
+  }
+}
 
 void handleSerial(){
   if(Serial.available()){
