@@ -23,6 +23,9 @@ public:
     void add_println(const char str[]);
     void add_print(int num);
     void add_println(int num);
+    void add_print(float num);
+    void add_println(float num);
+    void add_print(uint8_t b[], int num_bytes);
     void print_all();
     bool has_cmds();
     Queue<char> get_cmd();

@@ -9,6 +9,7 @@ private:
         U data;
         Node* next;
         Node(U data) : data(data), next(nullptr) {}
+        ~Node() { delete next; }
     };
 
     Node<T>* head;
@@ -18,11 +19,7 @@ public:
     Queue() : head(nullptr), tail(nullptr) {}
 
     ~Queue() {
-        while (head != nullptr) {
-            Node<T>* tmp = head;
-            head = head->next;
-            delete tmp;
-        }
+        delete head;
     }
 
     void add(T value) {
@@ -47,6 +44,7 @@ public:
         if (head == nullptr) {
             tail = nullptr;
         }
+        tmp->next = nullptr; // Break link to the rest of the list
         delete tmp;
         return value;
     }

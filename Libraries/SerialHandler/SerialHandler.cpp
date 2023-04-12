@@ -64,6 +64,38 @@ void SerialHandler::add_println(int num){
     print_queue.add('\n');
 }
 
+void SerialHandler::add_print(float num){
+    if (num == 0.0) {
+        add_print("0.0");
+        return;
+    }
+    int intPart = (int) num;
+    add_print(intPart);
+    float floatPart = num - intPart;
+    if (floatPart > 0.0) {
+        print_queue.add('.');
+        int decimalDigits = 0;
+        while (decimalDigits < 2 && floatPart > 0.0) {
+            floatPart *= 10;
+            int digit = (int) floatPart;
+            print_queue.add(digit + '0');
+            floatPart -= digit;
+            decimalDigits++;
+        }
+    }
+}
+
+void SerialHandler::add_println(float num){
+    add_print(num);
+    print_queue.add('\n');
+}
+
+void SerialHandler::add_print(uint8_t b[], int num_bytes){
+    for(int i = 0; i < num_bytes; i++){
+        add_print((char)b[i]);
+    }
+}
+
 void SerialHandler::print_all(){
     if(!print_queue.is_empty()){
         Serial.print(print_queue.pop());

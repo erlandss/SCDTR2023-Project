@@ -12,13 +12,13 @@ private:
     //Private member variables:
     uint8_t nodes[3];
     Filter coupling_gains_filter{0.60};
-    CircularBuffer<float> lux_buffer{60*100};
-    CircularBuffer<int> pwm_buffer{60*100};
     PerformanceMetrics metrics;
 
 public:
     //Public member variables for easy access:
     float coupling_gains[3] = {0};
+    CircularBuffer<float> lux_buffer{60*100};
+    CircularBuffer<int> pwm_buffer{60*100};
     //Public member functions:
     DataModule(){};
     ~DataModule(){};
