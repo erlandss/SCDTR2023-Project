@@ -7,7 +7,7 @@
 #include "CanHelperModule.h"
 #include "SerialHandler.h"
 #include "Queue.h"
-
+#include "Optimize2.h"
 const int DAC_RANGE = 4096;
 
 //Pins:
@@ -148,7 +148,7 @@ void loop() {
       while(1){
         uint32_t msg;
         uint8_t b[4];
-        if(!turn && wait_for_all_nodes.timed_out() && data.coupling_gains[0] == 0){
+        if(!turn && wait_for_all_nodes.timed_out() && data.coupling_gains[data.num_from_id(nodes[0])] == 0){
           b[0] = ICC_WRITE_DATA;
           b[1] = nodes[0];
           b[2] = CAN_CALIBRATING; 
@@ -194,6 +194,8 @@ void loop() {
     }
 
     case NODE_IDLE : {
+      Serial.print("c0 idle");
+
       if(first_time_idle){
         control.init_local_pid(0.02, 1.2, 8, 0.07, 1); //h, K, b, Ti, Tt
         add_repeating_timer_ms( -10, local_control_timer_callback, NULL, &local_control_timer);
@@ -202,15 +204,56 @@ void loop() {
       while(1){
         serial.read_inputs();
         serial.print_all();
+        if(node_state!=NODE_IDLE){
+          break;          
+        }
       }
     }
 
     case NODE_DISCUSSING : {
 
-      while(1){
-        serial.read_inputs();
-        serial.print_all();
-      }      
+      float* intent2;
+      float* intent3;
+      //Change second argument to external disturbance
+      Optimizer opt{0.07,10,control.lux_ref,data.coupling_gains,data.costVector, data.num_from_id(nodes[0])};
+
+      opt.initOptimizer();
+      opt.solveQP();
+
+      delay(1000);
+      for(int j=0;j<20;j++){
+          // Serial.print("kuk\n");
+          control.writeSendIntentQueue(opt.get_d());
+          delay(1);
+          
+          while(control.readyToReadQueue[0]==0 || control.readyToReadQueue[1]==0){
+            serial.read_inputs();
+            serial.print_all();
+          }
+
+          Serial.print("iterating consensus ");
+          intent2=control.readReceiveIntentQueue(0);
+          intent3=control.readReceiveIntentQueue(1);
+
+          opt.update_dbar(opt.get_d(),intent2,intent3);
+          opt.update_y();
+          
+          opt.solveQP();
+          Serial.print(j);
+          Serial.print("\n");
+        // } 
+        
+
+      }
+
+    if(opt.get_d()[data.num_from_id(nodes[0])]>=0){
+      control.local_pid.set_B(opt.get_d()[data.num_from_id(nodes[0])]/control.lux_ref);
+    }
+      
+      Serial.print("B:");
+      Serial.print(control.local_pid.get_B());
+      node_state=NODE_IDLE;
+      // Serial.print("Going idle\n");
     }
 
     default : 
@@ -233,15 +276,7 @@ bool local_control_timer_callback( struct repeating_timer *t ){
     serial.add_print("s d 0 "); serial.add_print(u);
     serial.add_print(' '); serial.add_println((int)millis());
   }
-  if(stream_l_can){
-    uint8_t b[6];
-    b[0] = CAN_REPLY_STREAM_D;
-    b[1] = frm;
-    memcpy(&b[2], &val, 4);
-    can_frame frm = bytes_to_can_frame(b, 6, nodes[0]);
-    delayMicroseconds(100);
-    can0.sendMessage(&frm);
-  }
+
   data.update_metrics(millis(), u/4095, control.lux_ref, control.last_lux_read);
   return true;
 }
@@ -326,8 +361,12 @@ void loop1() {
     }
 
     case NODE_IDLE : {
+      Serial.print("c1 idle\n");
       bool should_break = false;
       while(1){
+        if(node_state!=NODE_IDLE){
+          break;
+        }
         can_frame frm;
         if(got_irq) { 
           got_irq = false;
@@ -347,9 +386,15 @@ void loop1() {
           if(frm.data[1] == nodes[0]){
             switch(frm.data[0]) {
               case CAN_SET_ILLUMINANCE_REF : {
-                float f;
-                memcpy(&f, &frm.data[2], 4);
-                control.lux_ref = f;
+                // serial.add_print("got new ref\n");
+                if(frm.data[2]==nodes[0]){
+                  float f;
+                  memcpy(&f, &frm.data[3], 4);
+                  control.lux_ref = f;
+                  // break;
+                }
+                node_state=NODE_DISCUSSING;
+                should_break=true;
                 break;
               }
               case CAN_GET_ILLUMINANCE_REF : {
@@ -452,7 +497,7 @@ void loop1() {
                 float f;
                 memcpy(&f, &frm.data[2], 4);
                 serial.add_print("s l "); serial.add_print(data.at_node(frm.can_id)); 
-                serial.print(' '); serial.add_print(f);
+                serial.add_print(' '); serial.add_print(f);
                 serial.add_print(' '); serial.add_println((int)millis());
                 break;
               }
@@ -460,7 +505,7 @@ void loop1() {
                 int i;
                 memcpy(&i, &frm.data[2], 4);
                 serial.add_print("s d "); serial.add_print(data.at_node(frm.can_id)); 
-                serial.print(' '); serial.add_print(i);
+                serial.add_print(' '); serial.add_print(i);
                 serial.add_print(' '); serial.add_println((int)millis());
                 break;
               }
@@ -483,30 +528,149 @@ void loop1() {
     }
 
     case NODE_DISCUSSING : {
+      Serial.print("core 1 discussing\n");
+      float receiveIntentBuffer1[3];
+      float receiveIntentBuffer2[3];
+      float* intentVector;
+      int sending=0;
+      int sendNum=0;
+      unsigned long previousTime=0;
+      unsigned long currentTime=0;
+      // delay(1);
       while(1){
+        // Serial.print("kjor\n");
         can_frame frm;
+        currentTime =millis();
+        
+        if(control.readyToSendQueue){
+          // Serial.print("intent ready\n");
+          intentVector=control.readSendIntentQueue();
+          sending=1;          
+        }
+          // for(int i=0;i<3; i++){
+            if(sending && (currentTime-previousTime)>10){
+            uint8_t b[5];
+            switch (sendNum)
+            {
+            case 0:
+              b[0] = CAN_SEND_INTENT1;
+              break;
+            case 1:
+              b[0] = CAN_SEND_INTENT2;
+              break;
+            case 2:
+              b[0] = CAN_SEND_INTENT3;
+              sending=0;
+              break;
+            
+            default:
+              break;
+            }  
+                
+                // Serial.print(sendNum);
+                memcpy(&b[1], &(intentVector[sendNum]), 4);
+                frm = bytes_to_can_frame(b, 5, nodes[0]);
+                can0.sendMessage(&frm);
+                sendNum++;
+                if(sendNum>2){
+                  sendNum=0;
+                }
+                // delayMicroseconds(200);  
+                previousTime=currentTime;   
+                Serial.print("Sent intent\n");       
+            }
+
+            // Serial.print("Sending intent\n");
+
+          // }
+          
+        
+
+
         if(got_irq) { 
+
+
           got_irq = false;
           uint8_t irq = can0.getInterrupts();
           if(irq & MCP2515::CANINTF_RX0IF) {
             can0.readMessage( MCP2515::RXB0, &frm ); 
+            // rp2040.fifo.push_nb(can_frame_to_msg( &frm ) ); 
           }
           if(irq & MCP2515::CANINTF_RX1IF) {
             can0.readMessage(MCP2515::RXB1, &frm);
+            // rp2040.fifo.push_nb(can_frame_to_msg( &frm ) ); 
           }
           if( can0.checkError()) {
+            
             uint8_t err = can0.getErrorFlags();
+            print_can_errors(irq,err);
+            can0.clearRXnOVRFlags();
+            // can0.clearInterrupts();
+            continue;
             //Do something with this annoying error
-            break;
+            
           }
+          else{
+            if(frm.can_id==nodes[1]){
+              Serial.print("Got irq from node 1");
+              // Serial.print(frm.data[0]); 
+              // Serial.print("\n"); 
 
-          if(frm.data[1] == nodes[0]){
-            switch(frm.data[0]) {
+              switch (frm.data[0])
+              {
+              case CAN_SEND_INTENT1:
+                memcpy(&receiveIntentBuffer1[0], &frm.data[1], 4);
+                break;
+              case CAN_SEND_INTENT2:
+                memcpy(&receiveIntentBuffer1[1], &frm.data[1], 4);
+                break;
+              case CAN_SEND_INTENT3:
+                memcpy(&receiveIntentBuffer1[2], &frm.data[1], 4);
+                control.writeReceiveIntentQueue(receiveIntentBuffer1,0);
+                // Serial.print(control.readyToReadQueue[0]);
+                // Serial.print(control.readyToReadQueue[1]);
+                // Serial.print("\n");                
+                Serial.print("received intent\n");
+                break;              
               default:
                 break;
+              }
+
+            }else if(frm.can_id==nodes[2]){
+              Serial.print("Got irq from node 2");  
+              // Serial.print(frm.data[0]); 
+              // Serial.print("\n");          
+              switch (frm.data[0])
+              {
+              case CAN_SEND_INTENT1:
+                memcpy(&receiveIntentBuffer2[0], &frm.data[1], 4);
+                break;
+              case CAN_SEND_INTENT2:
+                memcpy(&receiveIntentBuffer2[1], &frm.data[1], 4);
+                break;
+              case CAN_SEND_INTENT3:
+                memcpy(&receiveIntentBuffer2[2], &frm.data[1], 4);
+                Serial.print("received intent\n");
+
+                control.writeReceiveIntentQueue(receiveIntentBuffer2,1);
+                // Serial.print(control.readyToReadQueue[0]);
+                // Serial.print(control.readyToReadQueue[1]);
+                // Serial.print("\n");
+                break;              
+              default:
+                break;
+              }
             }
+            // Serial.print("kuse\n");
+            // Serial.print(frm.data[0]);
+            
           }
         }
+        
+      if(node_state!=NODE_DISCUSSING){
+        // Serial.print("Gar ut\n");        
+        break;        
+      }   
       }
     }
 
@@ -636,6 +800,8 @@ void handle_inputs(){
       }
       case 'r' : {
         //Set the illuminance reference at luminaire i
+        can_frame frm;
+
         uint8_t i = cmd.pop() - '0';
         float val = 0.0;
         bool got_decimals = false;
@@ -657,17 +823,30 @@ void handle_inputs(){
           }
           while(!cmd.is_empty());
         }
+
         if(!i){
           control.lux_ref = val;
+          Serial.print(val);
         }
-        else{
-          uint8_t b[6];
-          b[0] = CAN_SET_ILLUMINANCE_REF;
-          b[1] = nodes[i];
-          memcpy(&b[2], &val, 4);
-          can_frame frm = bytes_to_can_frame(b, 6, nodes[0]);
-          can0.sendMessage(&frm);
-        }
+        // serial.add_print("messages sent\n");
+
+        uint8_t b[7];
+        b[0] = CAN_SET_ILLUMINANCE_REF;
+        b[1] = nodes[1];
+        b[2]=nodes[i];
+        memcpy(&b[3], &val, 4);
+        frm = bytes_to_can_frame(b, 7, nodes[0]);
+        can0.sendMessage(&frm);        
+        delay(1);
+        b[0] = CAN_SET_ILLUMINANCE_REF;
+        b[1] = nodes[2];
+        b[2]=nodes[i];
+        memcpy(&b[3], &val, 4);
+        frm = bytes_to_can_frame(b, 7, nodes[0]);
+        can0.sendMessage(&frm);
+        node_state=NODE_DISCUSSING;
+        // Serial.print("reference set, messages sent\n");
+        
         break;
       }
       case 'o' : {

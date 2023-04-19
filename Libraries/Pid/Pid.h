@@ -8,12 +8,20 @@ public:
     ~Pid() {};
     float compute_control( float r, float y);
     void housekeep( float r, float y);
+    void set_B(float _b);
+    float get_B();
 };
 
 inline void Pid::housekeep( float r, float y ) {
     float e = r - y;
     I += K*h/Ti*e;
     y_old = y;
+}
+inline void Pid::set_B(float _b){
+    b=_b;
+}
+inline float Pid::get_B(){
+    return b;
 }
 
 #endif

@@ -46,7 +46,10 @@ enum can_cmds {
   CAN_GET_ENERGY_COST,
   CAN_SET_ENERGY_COST,
   CAN_ADD_BYTES_TO_PRINT,
-  CAN_ADD_FLOAT_TO_PRINT
+  CAN_ADD_FLOAT_TO_PRINT,
+  CAN_SEND_INTENT1,
+  CAN_SEND_INTENT2,
+  CAN_SEND_INTENT3
 };
 
 //Communication between cores (core1 responsible for can bus communication, core0 for most else):
