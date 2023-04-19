@@ -15,6 +15,7 @@ private:
 public:
     //Public member variables for easy access:
     float coupling_gains[3] = {0};
+    float costVector[3]={1,1,1};
     float external_disturbance = 0;
     CircularBuffer<float> lux_buffer{60*100};
     CircularBuffer<int> pwm_buffer{60*100};
@@ -29,6 +30,7 @@ public:
     void update_lux_buffer(float lux_val);
     void update_pwm_buffer(int pwm_val);
     void update_metrics(unsigned long tk, float d, float L, float l);
+    int num_from_id(uint8_t id);
 };
 
 #endif
