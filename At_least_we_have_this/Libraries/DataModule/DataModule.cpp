@@ -23,7 +23,7 @@ void DataModule::update_gains(uint8_t node, int adc_val)
     float ldr = 10000*(3.3-v)/v; //ldr = R*(Vcc-v)/v
     float lux = pow(10,-(log10(ldr)-6.1)/0.8);
     lux = coupling_gains_filter.filter_data(lux);
-    coupling_gains[this->at_node(node)] = lux; 
+    coupling_gains[this->num_from_id(node)] = lux; 
 }
 
 void DataModule::update_lux_buffer(float lux_val){
@@ -37,4 +37,12 @@ void DataModule::update_pwm_buffer(int pwm_val){
 void DataModule::update_metrics(unsigned long tk, float d, float L, float l){
     metrics.update(tk, d, L, l);
     power_consumption = 0.108*d;
+}
+
+int DataModule::num_from_id(uint8_t id){
+    int num = 3;
+    for(int i = 0; i < 3; i++){
+        if(id <= nodes[i]) num--;
+    }
+    return num;
 }
